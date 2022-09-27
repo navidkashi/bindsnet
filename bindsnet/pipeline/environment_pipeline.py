@@ -257,6 +257,7 @@ class EnvironmentPipeline(BasePipeline):
             }
         else:
             obs = obs.unsqueeze(0)
+
             inputs = {
                 k: self.encoding(obs, self.time, device=self.device)
                 for k in self.inputs

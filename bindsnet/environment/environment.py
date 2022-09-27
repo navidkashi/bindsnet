@@ -82,7 +82,12 @@ class GymEnvironment(Environment):
             2D inputs.
         """
         self.name = name
-        self.env = gym.make(name)
+        # Make CarRacing env in descrete mode and set render mode.
+        if self.name == "CarRacing-v2":
+            self.env = gym.make(name, continuous=False, render_mode='human')
+        else:
+            self.env = gym.make(name)
+
         self.action_space = self.env.action_space
 
         self.encoder = encoder
@@ -122,7 +127,17 @@ class GymEnvironment(Environment):
         :return: Observation, reward, done flag, and information dictionary.
         """
         # Call gym's environment step function.
-        self.obs, self.reward, self.done, info = self.env.step(a)
+        # In gym v0.26.1 CarRacing step function return one more item.
+        if self.name == "CarRacing-v2":
+            self.obs, self.reward, self.terminated, self.truncated, info = self.env.step(a)
+            # To match with other gym environments, make done variable from terminated and truncated by OR operation.
+            self.done = self.terminated or self.truncated
+
+            # Preserve type of episode done by adding terminated and truncated variables to info.
+            info['terminated'] = self.terminated
+            info['truncated'] = self.truncated
+        else:
+            self.obs, self.reward, self.done, info = self.env.step(a)
 
         if self.clip_rewards:
             self.reward = np.sign(self.reward)
@@ -170,7 +185,12 @@ class GymEnvironment(Environment):
         :return: Observation from the environment.
         """
         # Call gym's environment reset function.
-        self.obs = self.env.reset()
+        # in gym v0.26.1 CarRacing reset function return a tuple that contain state pixels in item 0.
+        if self.name == "CarRacing-v2":
+            self.obs = self.env.reset()[0]
+        else:
+            self.obs = self.env.reset()
+
         self.preprocess()
 
         self.history = {i: torch.Tensor() for i in self.history}
@@ -205,6 +225,20 @@ class GymEnvironment(Environment):
         elif self.name == "BreakoutDeterministic-v4":
             self.obs = subsample(gray_scale(crop(self.obs, 34, 194, 0, 160)), 80, 80)
             self.obs = binary_image(self.obs)
+        elif self.name == "CarRacing-v2":
+            background = [0, 0, 0]
+            background_mask = np.zeros((96, 96))
+            # Find six different road pixel values.
+            for i in range(0, 8):
+                road = [100+i, 100+i, 100+i]
+                background_mask += np.all(self.obs == road, axis=2)
+            background_mask = background_mask == 0.0
+
+            self.obs[background_mask] = background
+            self.obs = subsample(gray_scale(crop(self.obs, 0, 65, 15, 80)), 80, 80)
+
+            self.obs = binary_image(self.obs)
+
         else:  # Default pre-processing step.
             pass
 
